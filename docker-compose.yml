@@ -1,0 +1,68 @@
+# Start containers: docker-compose up -d
+# Check status: docker-compose ps
+# Stop all: docker-compose stop
+
+version: "3.3"
+
+services:
+  mongodb:
+    image: mongo:4
+    restart: on-failure
+    ports:
+      # core service
+      - 27017:27017
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME_FILE: /run/secrets/mongo_initdb_root_username
+      MONGO_INITDB_ROOT_PASSWORD_FILE: /run/secrets/mongo_initdb_root_password
+    secrets:
+      - mongo_initdb_root_username
+      - mongo_initdb_root_password
+
+  mongo-express:
+    image: mongo-express:latest
+    restart: on-failure
+    ports:
+      # management console
+      - 8081:8081
+    depends_on:
+      - mongodb
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_MONGODB_PORT: 27017
+    env_file:
+      - .secrets/mongo_express_env
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: on-failure
+    ports:
+      # core service
+      - 5672:5672
+      # management console
+      - 15672:15672
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER_FILE: /run/secrets/rabbitmq_default_user_file
+      RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_default_pass_file
+    secrets:
+      - rabbitmq_default_user_file
+      - rabbitmq_default_pass_file
+
+secrets:
+  mongo_initdb_root_username:
+    file: .secrets/mongo_initdb_root_username
+  mongo_initdb_root_password:
+    file: .secrets/mongo_initdb_root_password
+  rabbitmq_default_user_file:
+    file: .secrets/rabbitmq_default_user_file
+  rabbitmq_default_pass_file:
+    file: .secrets/rabbitmq_default_pass_file
+
+volumes:
+  mongodb_data: {}
+  mongodb_config: {}
+  rabbitmq_data: {}
