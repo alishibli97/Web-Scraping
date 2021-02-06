@@ -13,15 +13,17 @@ import argparse
 
 class Image_Caption_Scraper():
 
-    def __init__(self,headless=True):
+    def __init__(self, headless=True, chrome_binary=None, chrome_driver='chromedriver'):
         """Initialization is only starting the web driver"""
-        self.start_web_driver(headless)
+        self.start_web_driver(headless, chrome_binary, chrome_driver)
 
-    def start_web_driver(self,headless):
+    def start_web_driver(self, headless, chrome_binary: str=None, chrome_driver='chromedriver'):
         """Create the webdriver and point it to the specific search engine"""
         chrome_options = Options()
-        if headless: chrome_options.add_argument("--headless")
-        self.wd = webdriver.Chrome(options=chrome_options)
+        chrome_options.headless = headless
+        if chrome_binary is not None:
+            chrome_options.binary_location = chrome_binary
+        self.wd = webdriver.Chrome(executable_path=chrome_driver, options=chrome_options)
 
     def scrape(self,engine,num_images,query):
         """Main function to scrape"""
@@ -219,16 +221,18 @@ if __name__ == "__main__":
     parser.add_argument('--num_images',required=True,type=int)
     parser.add_argument('--query',required=True,type=str)
     parser.add_argument('--out_dir',type=str,default='images')
-    parser.add_argument('headless',type=str, nargs='?')
+    parser.add_argument('--headless', action='store_true')
+    parser.add_argument('--chrome-binary', type=str)
+    parser.add_argument('--chrome-driver', type=str)
     args = parser.parse_args()
 
     engine = args.engine
     num_images = args.num_images
     query = args.query
     out_dir = args.out_dir
-    headless = args.headless is not None
+    headless = args.headless
     
-    scraper = Image_Caption_Scraper(headless)
+    scraper = Image_Caption_Scraper(headless, args.chrome_binary, args.chrome_driver)
 
     img_caption = scraper.scrape(engine,num_images,query)
     scraper.save_pictures_captions(img_caption,out_dir)
