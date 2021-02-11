@@ -9,7 +9,7 @@ services:
     image: mongo:4
     restart: on-failure
     ports:
-      # core service
+      # core service (exposed on the host's 0.0.0.0)
       - 27017:27017
     volumes:
       - mongodb_data:/data/db
@@ -25,8 +25,8 @@ services:
     image: mongo-express:latest
     restart: on-failure
     ports:
-      # management console
-      - 8081:8081
+      # management console (only acessible from the host's localhost)
+      - 127.0.0.1:8081:8081
     depends_on:
       - mongodb
     environment:
@@ -39,10 +39,10 @@ services:
     image: rabbitmq:3-management
     restart: on-failure
     ports:
-      # core service
+      # core service (exposed on the host's 0.0.0.0)
       - 5672:5672
-      # management console
-      - 15672:15672
+      # management console (only acessible from the host's localhost)
+      - 127.0.0.1:15672:15672
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     environment:
