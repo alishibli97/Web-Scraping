@@ -11,12 +11,22 @@ import sys
 import argparse
 from datetime import datetime
 import base64
+import requests
+from bs4 import BeautifulSoup
 
 class Image_Caption_Scraper():
 
     def __init__(self, headless=True, chrome_binary=None, chrome_driver='chromedriver'):
-        """Initialization is only starting the web driver"""
+        """Initialization is only starting the web driver and getting the public IP address"""
+        self.public_ip = self.get_public_ip_address()
         self.start_web_driver(headless, chrome_binary, chrome_driver)
+
+    def get_public_ip_address(self):
+        """Read the public IP address of the host"""
+        content = requests.get('https://www.whatismyip.org/my-ip-address').content
+        soup = BeautifulSoup(content,'html.parser')
+        public_ip = soup.find("a",{"href":"/my-ip-address"}).string
+        return public_ip
 
     def start_web_driver(self, headless, chrome_binary: str=None, chrome_driver='chromedriver'):
         """Create the webdriver and point it to the specific search engine"""
@@ -86,12 +96,13 @@ class Image_Caption_Scraper():
                         now = now.strftime("%m-%d-%Y %H:%M:%S %z %Z")
 
                         img_data[len(img_data)]={
+                            'query':query,
                             'url':url.get_attribute('src'),
                             'caption':caption,
                             'datetime': now,
-                            'source': 'google'
+                            'source': 'google',
+                            'public_ip': self.public_ip
                         }
-
                         print(f"Finished {len(img_data)} images.")
                 except:
                     print("Couldn't load image/caption")
@@ -103,15 +114,15 @@ class Image_Caption_Scraper():
     def get_yahoo_images(self,query,num_images):
         """Retrieve urls for images and captions from Yahoo Images search engine"""
         self.wd.get(self.target_url)
-        time.sleep(3)
-        # self.wd.delete_all_cookies()
+
+        # Accept cookie
+        try:
+            button = self.wd.find_element_by_xpath('//*[@id="consent-page"]/div/div/div/div[2]/div[2]/form/button')
+            button.click()
+        except:
+            pass
+
         img_data = {}
-
-        # button = self.wd.find_element_by_name('more-res')
-
-        # def scroll_to_end_yahoo():
-        #     self.wd.execute_script("arguments[0].click();", button)
-            # print("Scrolled")
 
         start = 0
         prevLength = 0
@@ -119,9 +130,7 @@ class Image_Caption_Scraper():
         i=0
         while(len(img_data)<num_images):
             self.scroll_to_end()
-            # scroll_to_end_yahoo()
 
-            # html_list = self.wd.find_element_by_id("sres")
             html_list = self.wd.find_element_by_xpath('//*[@id="sres"]')
             items = html_list.find_elements_by_tag_name("li")
 
@@ -136,7 +145,7 @@ class Image_Caption_Scraper():
                 try:
                     self.wd.execute_script("arguments[0].click();", content)
                     time.sleep(0.5)
-                except Exception as e:
+                except: # Exception as e:
                     new_html_list = self.wd.find_element_by_id("sres")
                     new_items = new_html_list.find_elements_by_tag_name("li")
                     item = new_items[i]
@@ -145,8 +154,19 @@ class Image_Caption_Scraper():
                 caption = self.wd.find_element_by_class_name('title').text
 
                 url = self.wd.find_element_by_xpath('//*[@id="img"]')
-                if url.get_attribute('src') and 'http' in url.get_attribute('src') and not url.get_attribute('src').endswith('gif') and url.get_attribute('src') not in img_data:
-                    img_data[url.get_attribute('src')]=caption
+                if url.get_attribute('src') and not url.get_attribute('src').endswith('gif') and url.get_attribute('src') not in img_data:
+
+                    now = datetime.now().astimezone()
+                    now = now.strftime("%m-%d-%Y %H:%M:%S %z %Z")
+
+                    img_data[len(img_data)]={
+                        'query':query,
+                        'url':url.get_attribute('src'),
+                        'caption':caption,
+                        'datetime': now,
+                        'source': 'google',
+                        'public_ip': self.public_ip
+                    }
                     print(f"Finished {len(img_data)} images.")
                 if(len(img_data)>num_images-1): break
             start = len(items)
@@ -182,7 +202,20 @@ class Image_Caption_Scraper():
                     url = "http://"+url.group(1)
                     caption = item.find_element_by_class_name('interaction-bar').get_attribute('title')
                     caption = caption[:re.search(r'\bby\b',caption).start()].strip()
-                    img_data[url]=caption
+                    # img_data[url]=caption
+
+                    now = datetime.now().astimezone()
+                    now = now.strftime("%m-%d-%Y %H:%M:%S %z %Z")
+
+                    img_data[len(img_data)]={
+                        'query':query,
+                        'url':url,
+                        'caption':caption,
+                        'datetime': now,
+                        'source': 'flickr',
+                        'public_ip': self.public_ip
+                    }
+
                     print(f"Finished {len(img_data)} images.")
                 if(len(img_data)>num_images-1): break
             start = len(items)
@@ -219,7 +252,7 @@ class Image_Caption_Scraper():
                         decoded_image_data = base64.decodebytes(base64_img_bytes)
                         f.write(decoded_image_data)
                     # print("Saved using base64")
-
+                else: print("Couldn't save image")
             except:
                 print("Couldn't save image")
 
@@ -237,6 +270,7 @@ class Image_Caption_Scraper():
         print("Saved urls file at:",os.path.join(os.getcwd(),file_path))
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--engine',required=True,type=str)
     parser.add_argument('--num_images',required=True,type=int)
