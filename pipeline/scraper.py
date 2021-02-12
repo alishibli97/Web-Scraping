@@ -58,12 +58,9 @@ class ImageScraper(object):
             caption = self.wd.find_element_by_xpath(
                 '//*[@id="Sva75c"]/div/div/div[3]/div[2]/c-wiz/div/div[1]/div[3]/div[2]/a'
             ).text
-            img_elements = self.wd.find_elements_by_css_selector("img.n3VNCb")
-            img_sources = (img_el.get_attribute("src") for img_el in img_elements)
-            img_sources = filter(lambda src: src is not None, img_sources)
-            img_sources = filter(lambda src: not src.endswith(".gif"), img_sources)
-            img_sources = list(img_sources)
-            url = img_sources[0]
+            
+            img_element = self.wd.find_element_by_xpath('//*[@id="Sva75c"]/div/div/div[3]/div[2]/c-wiz/div/div[1]/div[1]/div/div[2]/a/img')
+            if not url.get_attribute('src').endswith(".gif"): url = url.get_attribute('src')
             return {"caption": caption, "url": url}
 
         query_params = urllib.parse.urlencode(
@@ -269,7 +266,9 @@ def download_image(img_dict: Mapping[str, Any], output_dir: Union[str, Path]):
         response = requests.get(img_dict["url"])
         response.raise_for_status()
         img = Image.open(io.BytesIO(response.content))
-        img = img.convert("RGB")
+        try: 
+            img = img.convert("RGB")
+        except: pass
         with path.open("wb") as f:
             img.save(f, "JPEG", quality=95)
     elif img_dict["url"].startswith("data"):
