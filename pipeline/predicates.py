@@ -1,34 +1,32 @@
+import argparse
 import json
-from itertools import product
 
 import pika
 from loguru import logger
 
-import rabbitconfig
+from .configuration import RabbitConfig
+from .utils import setup_rabbitmq
 
 
 def main():
-    predicates = map(
-        "-".join,
-        product(["hello", "hey"], ["world", "planet"], map(str, range(4))),
-    )
+    parser = argparse.ArgumentParser(description="Image scraper")
+    parser.add_argument("predicates", nargs="+")
+    args = parser.parse_args()
 
-    connection = pika.BlockingConnection(
-        pika.ConnectionParameters(
-            host=rabbitconfig.hostname,
-            port=rabbitconfig.port,
-            credentials=pika.PlainCredentials(rabbitconfig.user, rabbitconfig.password),
-        )
-    )
-    channel = connection.channel()
-    channel.exchange_declare(exchange=rabbitconfig.exchange, exchange_type="direct")
+    rabbitconfig = RabbitConfig()
+    channel, connection = setup_rabbitmq(rabbitconfig)
 
-    channel.queue_declare(queue=rabbitconfig.expand_queue, durable=True)
-    channel.queue_bind(
-        exchange=rabbitconfig.exchange,
-        queue=rabbitconfig.expand_queue,
-        routing_key=rabbitconfig.expand_key,
-    )
+    predicates = []
+    for p in args.predicates:
+        if p.endswith(".txt"):
+            with open(p) as f:
+                lines = map(str.strip, f)
+                lines = filter(lambda l: len(l) > 0, lines)
+                lines = filter(lambda l: not l.startswith("#"), lines)
+                predicates.extend(lines)
+        else:
+            predicates.append(p)
+    logger.info(f"Launching {len(predicates)} predicates")
 
     for predicate in predicates:
         channel.basic_publish(

@@ -1,66 +1,38 @@
 import json
-import random
-import time
 
 import pika
 from loguru import logger
 
-import rabbitconfig
+from .configuration import RabbitConfig
+from .utils import setup_rabbitmq
 
 
 class Expander(object):
-    def __init__(self):
-        logger.info("Expander created")
-
     def expand(self, predicate: str):
-        if random.random() < 0.1:
-            raise RuntimeError("Expansion error")
-        time.sleep(2 * random.random())
         return [
             predicate,
-            predicate.title(),
-            predicate.upper(),
+            # predicate.title(),
+            # predicate.upper(),
         ]
 
 
 def main():
     expander = Expander()
 
-    connection = pika.BlockingConnection(
-        pika.ConnectionParameters(
-            host=rabbitconfig.hostname,
-            port=rabbitconfig.port,
-            credentials=pika.PlainCredentials(rabbitconfig.user, rabbitconfig.password),
-        )
-    )
-    channel = connection.channel()
-    channel.basic_qos(prefetch_count=1)
-    channel.exchange_declare(exchange=rabbitconfig.exchange, exchange_type="direct")
-
-    channel.queue_declare(queue=rabbitconfig.expand_queue, durable=True)
-    channel.queue_bind(
-        exchange=rabbitconfig.exchange,
-        queue=rabbitconfig.expand_queue,
-        routing_key=rabbitconfig.expand_key,
-    )
-
-    channel.queue_declare(queue=rabbitconfig.scrape_queue, durable=True)
-    channel.queue_bind(
-        exchange=rabbitconfig.exchange,
-        queue=rabbitconfig.scrape_queue,
-        routing_key=rabbitconfig.scrape_key,
-    )
+    rabbitconfig = RabbitConfig()
+    channel, connection = setup_rabbitmq(rabbitconfig)
 
     def callback(ch, method, properties, body):
         msg = json.loads(body)
+        logger.info(f"Expanding: {msg}")
         try:
             for query in expander.expand(msg["predicate"]):
                 msg2 = {**msg, "query": query}
-                logger.info(f"Expanded: {msg2}")
+                logger.debug(f"Expanded: {msg2}")
                 channel.basic_publish(
                     exchange=rabbitconfig.exchange,
                     routing_key=rabbitconfig.scrape_key,
-                    body=json.dumps(msg2),
+                    body=json.dumps(msg2).encode(),
                     properties=pika.BasicProperties(delivery_mode=2),
                 )
             ch.basic_ack(delivery_tag=method.delivery_tag)
