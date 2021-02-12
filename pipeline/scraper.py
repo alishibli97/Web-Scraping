@@ -58,10 +58,11 @@ class ImageScraper(object):
             caption = self.wd.find_element_by_xpath(
                 '//*[@id="Sva75c"]/div/div/div[3]/div[2]/c-wiz/div/div[1]/div[3]/div[2]/a'
             ).text
-            
-            img_element = self.wd.find_element_by_xpath('//*[@id="Sva75c"]/div/div/div[3]/div[2]/c-wiz/div/div[1]/div[1]/div/div[2]/a/img')
-            if not url.get_attribute('src').endswith(".gif"): url = url.get_attribute('src')
-            return {"caption": caption, "url": url}
+            img_element = self.wd.find_element_by_xpath(
+                '//*[@id="Sva75c"]/div/div/div[3]/div[2]/c-wiz/div/div[1]/div[1]/div/div[2]/a/img'
+            )
+            url = img_element.get_attribute("src")
+            return caption, url
 
         query_params = urllib.parse.urlencode(
             {
@@ -86,13 +87,18 @@ class ImageScraper(object):
 
             for thumbnail in thumbnails:
                 with logger.catch(Exception, reraise=False):
+                    caption, url = get_one(thumbnail)
+                    if url.endswith(".gif"):
+                        logger.debug(f"Result {result_index} is .gif, skipping")
+                        continue
                     yield ScrapingDict(
                         query=query,
                         public_ip=self.public_ip,
                         engine="google",
                         datetime_utc=datetime.utcnow(),
                         result_index=result_index,
-                        **get_one(thumbnail),
+                        caption=caption,
+                        url=url,
                     )
                 result_index += 1
 
