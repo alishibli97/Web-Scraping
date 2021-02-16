@@ -38,7 +38,7 @@ class RabbitConfig(object):
 @dataclass
 class MongoConfig(object):
     hostname: str = env_field("MONGO_HOSTNAME", "localhost")
-    port: int = env_field("MONGO_HOSTNAME", 27017)
+    port: int = env_field("MONGO_PORT", 27017)
     user: str = env_field("MONGO_INITDB_ROOT_USERNAME", "root")
     password: str = env_field("MONGO_INITDB_ROOT_PASSWORD", "example")
     db: str = "webly"
