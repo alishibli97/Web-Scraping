@@ -25,7 +25,7 @@ services:
     image: mongo-express:latest
     restart: on-failure
     ports:
-      # management console (only acessible from the host's localhost)
+      # management console (only accessible from the host's localhost)
       - 127.0.0.1:8081:8081
     depends_on:
       - mongodb
@@ -41,7 +41,7 @@ services:
     ports:
       # core service (exposed on the host's 0.0.0.0)
       - 5672:5672
-      # management console (only acessible from the host's localhost)
+      # management console (only accessible from the host's localhost)
       - 127.0.0.1:15672:15672
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
@@ -51,6 +51,17 @@ services:
     secrets:
       - rabbitmq_default_user_file
       - rabbitmq_default_pass_file
+
+  chrome:
+    image: browserless/chrome
+    restart: on-failure
+    ports:
+      # core service (exposed on the host's 0.0.0.0)
+      - 3000:3000
+    environment:
+      CONNECTION_TIMEOUT: 60000 # 60 minutes
+    env_file:
+      - .secrets/chrome_token
 
 secrets:
   mongo_initdb_root_username:

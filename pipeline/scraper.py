@@ -4,12 +4,13 @@ import argparse
 import base64
 import io
 import json
+import os
 import random
 import re
 import sys
 import time
 import urllib.parse
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from datetime import datetime
 from itertools import islice
 from pathlib import Path
@@ -19,7 +20,6 @@ import requests
 from loguru import logger
 from PIL import Image
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 
 from .configuration import MongoConfig, RabbitConfig
 from .utils import setup_mongo, setup_rabbitmq
@@ -28,12 +28,9 @@ from .utils import setup_mongo, setup_rabbitmq
 class ImageScraper(object):
     ENGINES = ("google", "yahoo", "flickr")
 
-    def __init__(self, headless=True, chrome_binary=None, chrome_driver="chromedriver"):
-        self.chrome_driver = chrome_driver
-        self.chrome_binary = chrome_binary
-        self.headless = headless
-        self.public_ip = None
-        self.wd = None
+    def __init__(self, chrome):
+        self.public_ip = get_chrome_ip_address(chrome)
+        self.chrome = chrome
 
     def scrape(self, engine, query, num_images) -> Iterator[ScrapingDict]:
         """Main function to scrape"""
@@ -44,7 +41,7 @@ class ImageScraper(object):
         elif engine == "flickr":
             img_iterator = self.get_flickr_images(query)
         else:
-            raise ValueError("Unknown engine")
+            raise ValueError(f"Unknown engine: {engine}")
 
         yield from islice(img_iterator, num_images)
 
@@ -53,13 +50,13 @@ class ImageScraper(object):
 
         def get_one(thumbnail):
             """Click on one thumbnail and try to get the http image source, fallback to url encoded"""
-            self.wd.execute_script("arguments[0].click();", thumbnail)
+            self.chrome.execute_script("arguments[0].click();", thumbnail)
             time.sleep(0.5)
 
-            caption = self.wd.find_element_by_xpath(
+            caption = self.chrome.find_element_by_xpath(
                 '//*[@id="Sva75c"]/div/div/div[3]/div[2]/c-wiz/div/div[1]/div[3]/div[2]/a'
             ).text
-            img_element = self.wd.find_element_by_xpath(
+            img_element = self.chrome.find_element_by_xpath(
                 '//*[@id="Sva75c"]/div/div/div[3]/div[2]/c-wiz/div/div[1]/div[1]/div/div[2]/a/img'
             )
             url = img_element.get_attribute("src")
@@ -74,12 +71,12 @@ class ImageScraper(object):
                 "gs_l": "img",
             }
         )
-        self.wd.get("https://www.google.com/search?" + query_params)
+        self.chrome.get("https://www.google.com/search?" + query_params)
 
         result_index = 0
         while True:
             self.scroll_to_end()
-            thumbnails = self.wd.find_elements_by_css_selector("img.Q4LuWd")
+            thumbnails = self.chrome.find_elements_by_css_selector("img.Q4LuWd")
             thumbnails = thumbnails[result_index:]
             if len(thumbnails) == 0:
                 logger.debug("No more images after scrolling")
@@ -113,11 +110,13 @@ class ImageScraper(object):
                 "fr": "sfp",
             }
         )
-        self.wd.get("https://images.search.yahoo.com/search/images;?" + query_params)
+        self.chrome.get(
+            "https://images.search.yahoo.com/search/images;?" + query_params
+        )
 
         # Accept cookie
         with suppress(Exception):
-            self.wd.find_element_by_xpath(
+            self.chrome.find_element_by_xpath(
                 '//*[@id="consent-page"]/div/div/div/div[2]/div[2]/form/button'
             ).click()
 
@@ -127,7 +126,7 @@ class ImageScraper(object):
         while True:
             self.scroll_to_end()
 
-            html_list = self.wd.find_element_by_xpath('//*[@id="sres"]')
+            html_list = self.chrome.find_element_by_xpath('//*[@id="sres"]')
             items = html_list.find_elements_by_tag_name("li")
 
             if len(items) == prevLength:
@@ -139,16 +138,16 @@ class ImageScraper(object):
 
             for content in items[start : len(items) - 1]:
                 try:
-                    self.wd.execute_script("arguments[0].click();", content)
+                    self.chrome.execute_script("arguments[0].click();", content)
                     time.sleep(0.5)
                 except Exception as e:
-                    new_html_list = self.wd.find_element_by_id("sres")
+                    new_html_list = self.chrome.find_element_by_id("sres")
                     new_items = new_html_list.find_elements_by_tag_name("li")
                     item = new_items[i]
-                    self.wd.execute_script("arguments[0].click();", item)
-                caption = self.wd.find_element_by_class_name("title").text
+                    self.chrome.execute_script("arguments[0].click();", item)
+                caption = self.chrome.find_element_by_class_name("title").text
 
-                url = self.wd.find_element_by_xpath('//*[@id="img"]')
+                url = self.chrome.find_element_by_xpath('//*[@id="img"]')
                 src = url.get_attribute("src")
                 if src is not None and not src.endswith("gif"):
                     yield ScrapingDict(
@@ -171,7 +170,7 @@ class ImageScraper(object):
                 "text": query,
             }
         )
-        self.wd.get("https://www.flickr.com/search/?" + query_params)
+        self.chrome.get("https://www.flickr.com/search/?" + query_params)
         img_data = {}
 
         start = 0
@@ -181,13 +180,13 @@ class ImageScraper(object):
         while True:
             self.scroll_to_end()
 
-            items = self.wd.find_elements_by_xpath(
+            items = self.chrome.find_elements_by_xpath(
                 "/html/body/div[1]/div/main/div[2]/div/div[2]/div"
             )
 
             if len(items) == prevLength:
                 if not waited:
-                    self.wd.implicitly_wait(25)
+                    self.chrome.implicitly_wait(25)
                     waited = True
                 else:
                     print("Loaded all images")
@@ -219,33 +218,8 @@ class ImageScraper(object):
 
     def scroll_to_end(self):
         """Scroll to end of page"""
-        self.wd.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        self.chrome.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(2)
-
-    def __enter__(self):
-        return self.start()
-
-    def start(self):
-        """Start web driver and get public IP info"""
-        if self.wd is None:
-            self.public_ip = get_public_ip_address()
-            chrome_options = Options()
-            chrome_options.headless = self.headless
-            if self.chrome_binary is not None:
-                chrome_options.binary_location = self.chrome_binary
-            kwargs = {}
-            if self.chrome_driver is not None:
-                kwargs["executable_path"] = self.chrome_driver
-            self.wd = webdriver.Chrome(options=chrome_options, **kwargs)
-        return self
-
-    def __exit__(self, type, value, traceback):
-        self.close()
-
-    def close(self):
-        self.wd.quit()
-        self.wd = None
-        self.public_ip = None
 
 
 class ScrapingDict(TypedDict, total=False):
@@ -300,6 +274,31 @@ def download_image(img_dict: Mapping[str, Any], output_dir: Union[str, Path]):
     return path
 
 
+def create_chrome_driver(chrome=None, chrome_binary=None, chrome_driver=None):
+    if chrome is None:
+        chrome_options = webdriver.ChromeOptions()
+        chrome_options.headless = False
+        if chrome_binary is not None:
+            chrome_options.binary_location = chrome_binary
+        kwargs = {}
+        if chrome_driver is not None:
+            kwargs["executable_path"] = chrome_driver
+        driver = webdriver.Chrome(options=chrome_options, **kwargs)
+    else:
+        chrome_options = webdriver.ChromeOptions()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        if "TOKEN" in os.environ:
+            chrome_options.set_capability("browserless.token", os.environ["TOKEN"])
+        driver = webdriver.Remote(
+            command_executor=chrome,
+            desired_capabilities=chrome_options.to_capabilities(),
+        )
+    logger.info(f"Started Chrome ({chrome})")
+    return driver
+
+
 def get_public_ip_address() -> Optional[Dict[str, str]]:
     """Read the public IP address of the host"""
     response = requests.get("http://ip-api.com/json/?fields=57625")
@@ -317,16 +316,40 @@ def get_public_ip_address() -> Optional[Dict[str, str]]:
         return None
 
 
+def get_chrome_ip_address(chrome) -> Optional[Dict[str, str]]:
+    try:
+        chrome.get("http://ip-api.com/json/?fields=57625")
+        response = json.loads(chrome.find_element_by_tag_name("pre").text)
+        if response.pop("status") != "success":
+            raise RuntimeError(response["message"])
+        response["ip"] = response.pop("query")
+        return response
+    except Exception as e:
+        logger.warning(f"Could not determine IP address: {e}")
+        return None
+
+
 @logger.catch(reraise=False, onerror=lambda _: sys.exit(1))
 def main():
     parser = argparse.ArgumentParser(description="Image scraper")
-    subparsers = parser.add_subparsers(help="Subcommands", required=True)
+    subparsers = parser.add_subparsers(
+        help="Subcommands", metavar="MODE", required=True
+    )
 
     # Common options
     group = parser.add_argument_group("Chrome options")
-    group.add_argument("--headless", action="store_true")
-    group.add_argument("--chrome-binary", type=str, default=None)
-    group.add_argument("--chrome-driver", type=str, default=None)
+    group.add_argument(
+        "--chrome",
+        help="Remote Chrome url, e.g. 'http://localhost:3000/webdriver'. Will use a local process if absent.",
+        default=None,
+    )
+    group.add_argument(
+        "--chrome-binary", help="Only needed for local Chrome", default=None
+    )
+    group.add_argument(
+        "--chrome-driver", help="Only needed for local Chrome", default=None
+    )
+
     group = parser.add_argument_group("Saving options")
     group.add_argument("--out-dir", default="images")
 
@@ -351,16 +374,6 @@ def main():
 
 
 def daemon(args):
-    mongoconfig = MongoConfig()
-    mongoclient, metadata_collection = setup_mongo(mongoconfig)
-
-    rabbitconfig = RabbitConfig()
-    channel, connection = setup_rabbitmq(rabbitconfig)
-
-    scraper = ImageScraper(args.headless, args.chrome_binary, args.chrome_driver)
-    scraper.start()
-    logger.info("Started Chrome")
-
     def callback(ch, method, properties, body):
         msg = json.loads(body)
         logger.info(f"Scraping: {msg['query']}")
@@ -376,23 +389,40 @@ def daemon(args):
             ch.basic_nack(delivery_tag=method.delivery_tag)
             logger.warning(f"Failed: {msg} {e}")
 
-    try:
-        logger.info("Waiting for queries")
-        channel.basic_consume(
-            queue=rabbitconfig.scrape_queue, on_message_callback=callback
+    with ExitStack() as stack:
+        mongoconfig = MongoConfig()
+        mongoclient, metadata_collection = setup_mongo(mongoconfig)
+        stack.enter_context(mongoclient)
+
+        rabbitconfig = RabbitConfig()
+        channel, connection = setup_rabbitmq(rabbitconfig)
+        stack.enter_context(connection)
+        stack.enter_context(channel)
+
+        chrome = create_chrome_driver(
+            args.chrome, args.chrome_binary, args.chrome_driver
         )
-        channel.start_consuming()
-    except KeyboardInterrupt:
-        logger.info("Bye")
-    finally:
-        scraper.close()
-        connection.close()
-        mongoclient.close()
+        stack.enter_context(chrome)
+        scraper = ImageScraper(chrome)
+
+        try:
+            logger.info("Waiting for queries")
+            channel.basic_consume(
+                queue=rabbitconfig.scrape_queue, on_message_callback=callback
+            )
+            channel.start_consuming()
+        except KeyboardInterrupt:
+            logger.info("Bye")
 
 
 def manual(args):
-    scraper = ImageScraper(args.headless, args.chrome_binary, args.chrome_driver)
-    with scraper:
+    with ExitStack() as stack:
+        chrome = create_chrome_driver(
+            args.chrome, args.chrome_binary, args.chrome_driver
+        )
+        stack.enter_context(chrome)
+        scraper = ImageScraper(chrome)
+
         for img_dict in scraper.scrape(args.engine, args.query, args.num_images):
             img_json = {
                 **img_dict,

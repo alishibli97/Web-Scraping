@@ -44,8 +44,3 @@ class MongoConfig(object):
     db: str = "webly"
     metadata_collection: str = "metadata"
     images_collection: str = "images"
-
-
-@dataclass
-class ScrapingConfig(object):
-    engines = ["google", "yahoo", "flickr"]
