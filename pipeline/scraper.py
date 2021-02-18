@@ -233,7 +233,7 @@ class ScrapingDict(TypedDict, total=False):
     datetime_utc: datetime
 
 
-def download_image(img_dict: Mapping[str, Any], output_dir: Union[str, Path]):
+def download_image(img_dict: Mapping[str, Any], output_dir: Union[str, Path], force=False):
     user_agents = [
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Safari/605.1.15",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:77.0) Gecko/20100101 Firefox/77.0",
@@ -252,6 +252,9 @@ def download_image(img_dict: Mapping[str, Any], output_dir: Union[str, Path]):
         .joinpath(f"{img_dict['result_index']}.jpg")
     )
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    if path.is_file() and not force:
+        return path
 
     if img_dict["url"].startswith("http"):
         response = requests.get(
