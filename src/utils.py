@@ -42,7 +42,7 @@ def setup_mongo(mongoconfig):
         password=mongoconfig.password,
     )
     db = client[mongoconfig.db]
-    metadata_collection = db[mongoconfig.collection]
-    db.command("collstats", mongoconfig.collection)
+    metadata_collection = db[mongoconfig.metadata_collection]
+    db.command("collstats", mongoconfig.metadata_collection)
     logger.info("Connected to MongoDB")
     return client, metadata_collection

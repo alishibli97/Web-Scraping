@@ -11,9 +11,6 @@ from PIL import Image
 from configuration import MongoConfig
 from utils import setup_mongo
 
-mongoconfig = MongoConfig()
-mongoclient, collection = setup_mongo(mongoconfig)
-
 
 def download_image(
     img_dict: Mapping[str, Any], output_dir: Union[str, Path], force=False
@@ -61,11 +58,19 @@ def download_image(
     return path
 
 
-with mongoclient:
-    for img_dict in collection.find():
-        try:
-            img_dict["predicate"] = img_dict["query"]
-            path = download_image(img_dict, "images")
-            logger.info(f"Saved: {path}")
-        except Exception as e:
-            logger.warning(f"Image download failed: {e}")
+def main():
+    mongoconfig = MongoConfig()
+    mongoclient, collection = setup_mongo(mongoconfig)
+
+    with mongoclient:
+        for img_dict in collection.find():
+            try:
+                img_dict["predicate"] = img_dict["query"]
+                path = download_image(img_dict, "images")
+                logger.info(f"Saved: {path}")
+            except Exception as e:
+                logger.warning(f"Image download failed: {e}")
+
+
+if __name__ == "__main__":
+    main()
