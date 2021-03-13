@@ -31,7 +31,9 @@ def download_image(img_dict: Mapping[str, Any], path: Union[str, Path], force=Fa
 
     if img_dict["url"].startswith("http"):
         response = requests.get(
-            img_dict["url"], headers={"User-Agent": random.choice(user_agents)}
+            img_dict["url"],
+            headers={"User-Agent": random.choice(user_agents)},
+            timeout=10
         )
         response.raise_for_status()
         img = Image.open(io.BytesIO(response.content))
@@ -55,7 +57,6 @@ def main():
     with mongoclient:
         for img_dict in collection.find():
             try:
-                img_dict["predicate"] = img_dict["query"]
                 path = (
                     Path("images")
                     .joinpath(img_dict["engine"])

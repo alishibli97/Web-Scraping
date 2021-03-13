@@ -44,6 +44,13 @@
    ```bash
    docker-compose stop
    ```
+   
+8. Download images
+   ```bash
+   export MONGO_INITDB_ROOT_USERNAME_FILE=.secrets/mongo_initdb_root_username
+   export MONGO_INITDB_ROOT_PASSWORD_FILE=.secrets/mongo_initdb_root_password
+   python -m pipeline.downloader 
+   ```
 
 ![Pipeline example](pipeline-example.png)
 
