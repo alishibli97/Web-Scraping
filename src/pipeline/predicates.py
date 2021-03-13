@@ -4,8 +4,8 @@ import json
 import pika
 from loguru import logger
 
-from .configuration import RabbitConfig
-from .utils import setup_rabbitmq
+from configuration import RabbitConfig
+from utils import setup_rabbitmq
 
 
 def main():
