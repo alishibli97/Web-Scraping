@@ -216,7 +216,7 @@ class ImageScraper(object):
     def scroll_to_end(self):
         """Scroll to end of page"""
         self.chrome.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(2)
+        time.sleep(1)
 
 
 class ScrapingDict(TypedDict, total=False):
@@ -333,17 +333,21 @@ def daemon(args):
     def callback(ch, method, properties, body):
         msg = json.loads(body)
         logger.info(f"Scraping: {msg['query']}")
-        try:
-            for engine in scraper.ENGINES:
-                for img_dict in scraper.scrape(engine, msg["query"], args.num_images):
-                    logger.debug(
-                        f"Scraped: {img_dict['engine']} {img_dict['query']} {img_dict['result_index']}"
-                    )
-                    metadata_collection.insert_one({**msg, **img_dict})
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-        except Exception as e:
-            ch.basic_nack(delivery_tag=method.delivery_tag)
-            logger.warning(f"Failed: {msg} {e}")
+        with create_chrome_driver(
+            args.chrome, args.chrome_binary, args.chrome_driver
+        ) as chrome:
+            scraper = ImageScraper(chrome)
+            try:
+                for engine in scraper.ENGINES:
+                    for img_dict in scraper.scrape(engine, msg["query"], args.num_images):
+                        logger.debug(
+                            f"Scraped: {img_dict['engine']} {img_dict['query']} {img_dict['result_index']}"
+                        )
+                        metadata_collection.insert_one({**msg, **img_dict})
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+            except Exception as e:
+                ch.basic_nack(delivery_tag=method.delivery_tag)
+                logger.warning(f"Failed: {msg} {e}")
 
     with ExitStack() as stack:
         mongoconfig = MongoConfig()
@@ -354,12 +358,6 @@ def daemon(args):
         channel, connection = setup_rabbitmq(rabbitconfig)
         stack.enter_context(connection)
         stack.enter_context(channel)
-
-        chrome = create_chrome_driver(
-            args.chrome, args.chrome_binary, args.chrome_driver
-        )
-        stack.enter_context(chrome)
-        scraper = ImageScraper(chrome)
 
         try:
             logger.info("Waiting for queries")
