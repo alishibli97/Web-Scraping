@@ -67,7 +67,7 @@ def main():
                 if path.is_file():
                     logger.info(f"Existing: {path}")
                 else:
-                    download_image(img_dict, "images")
+                    download_image(img_dict, path)
                     logger.info(f"Saved: {path}")
             except Exception as e:
                 logger.warning(f"Image download failed: {e}")
