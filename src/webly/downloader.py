@@ -1,3 +1,4 @@
+import argparse
 import base64
 import io
 import random
@@ -8,8 +9,7 @@ import requests
 from loguru import logger
 from PIL import Image
 
-from configuration import MongoConfig
-from utils import setup_mongo
+from .mongo import setup_mongo
 
 user_agents = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Safari/605.1.15",
@@ -33,7 +33,7 @@ def download_image(img_dict: Mapping[str, Any], path: Union[str, Path], force=Fa
         response = requests.get(
             img_dict["url"],
             headers={"User-Agent": random.choice(user_agents)},
-            timeout=10
+            timeout=10,
         )
         response.raise_for_status()
         img = Image.open(io.BytesIO(response.content))
@@ -50,28 +50,47 @@ def download_image(img_dict: Mapping[str, Any], path: Union[str, Path], force=Fa
         raise ValueError(f"Invalid image url: {img_dict['url']}")
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Scraper")
+
+    inputs = parser.add_argument_group("Input options")
+    inputs.add_argument(
+        "--mongo-url", type=str, help="url for database connections", required=True
+    )
+    inputs.add_argument(
+        "--mongo-pass-file",
+        type=str,
+        help="password file for database connections",
+        required=True,
+    )
+
+    output = parser.add_argument_group("Output options")
+    output.add_argument("--output-dir", type=Path, required=True)
+
+    return parser.parse_args()
+
+
 def main():
-    mongoconfig = MongoConfig()
-    mongoclient, collection = setup_mongo(mongoconfig)
+    args = parse_args()
+    args.output_dir.mkdir(exist_ok=True, parents=True)
+    collection = setup_mongo(args.mongo_url, args.mongo_pass_file)
 
-    with mongoclient:
-        for img_dict in collection.find():
-            try:
-                path = (
-                    Path("images")
-                    .joinpath(img_dict["engine"])
-                    .joinpath(img_dict["predicate"])
-                    .joinpath(img_dict["query"])
-                    .joinpath(f"{img_dict['result_index']}.jpg")
-                )
-                if path.is_file():
-                    logger.info(f"Existing: {path}")
-                else:
-                    download_image(img_dict, path)
-                    logger.info(f"Saved: {path}")
-            except Exception as e:
-                logger.warning(f"Image download failed: {e}")
+    for img_dict in collection.find():
+        try:
+            path = args.output_dir / f'{img_dict["_id"]}.jpg'
+            if path.is_file():
+                logger.info(f"Existing: {path}")
+            else:
+                download_image(img_dict, path)
+                logger.info(f"Saved: {path}")
+        except Exception as e:
+            logger.warning(f"Image download failed: {e}")
 
-
+"""
+python -m webly.downloader \
+    --mongo-url mongodb://user@localhost \
+    --mongo-pass-file .secrets/mongo_initdb_root_password \
+    --output-dir images
+"""
 if __name__ == "__main__":
     main()
