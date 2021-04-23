@@ -10,6 +10,9 @@ from itertools import islice
 from pathlib import Path
 from typing import Dict, Iterator
 
+from contextlib import ExitStack, suppress
+import re
+
 from loguru import logger
 from selenium import webdriver
 
@@ -243,13 +246,135 @@ def get_google_images(driver, query) -> Iterator[Dict]:
                 }
             result_index += 1
 
-
 def get_yahoo_images(driver, query):
-    raise NotImplementedError
+    """Scrape image urls and captions from Yahoo Images"""
+    query_params = urllib.parse.urlencode(
+        {
+            "safe": "off",
+            "tbm": "isch",
+            "source": "hp",
+            "q": query,
+            "gs_l": "img",
+        }
+    )
+    driver.get("https://images.search.yahoo.com/search/images;?" + query_params)
+    query_datetime = datetime.utcnow()
+
+    # Accept cookie
+    with suppress(Exception):
+        self.chrome.find_element_by_xpath(
+            '//*[@id="consent-page"]/div/div/div/div[2]/div[2]/form/button'
+        ).click()
+
+    prevLength = 0
+    result_index = 0
+    while True:
+        scroll_to_end(driver)
+
+        html_list = driver.find_element_by_xpath('//*[@id="sres"]')
+        items = html_list.find_elements_by_tag_name("li")
+
+        if len(items) == prevLength:
+            # print("Loaded all images")
+            logger.debug("Loaded all images")
+            break
+        
+        logger.trace(f"New images after scrolling: {len(items)}")
+        
+        prevLength = len(items)
+
+        # print(f"There are {len(items)} images")
+
+        for content in items[result_index : len(items) - 1]:
+            try:
+                driver.execute_script("arguments[0].click();", content)
+                time.sleep(0.5)
+            except Exception as e:
+                new_html_list = driver.find_element_by_id("sres")
+                new_items = new_html_list.find_elements_by_tag_name("li")
+                item = new_items[i]
+                driver.execute_script("arguments[0].click();", item)
+            caption = driver.find_element_by_class_name("title").text
+
+            url = driver.find_element_by_xpath('//*[@id="img"]')
+            src = url.get_attribute("src")
+            if src is not None and not src.endswith("gif"):
+                yield {
+                    "query": query,
+                    "datetime_utc": query_datetime,
+                    "result_index": result_index,
+                    "caption": caption,
+                    "url": src,
+                }
+            result_index += 1
+            # result_index = len(items)
 
 
 def get_flickr_images(driver, query):
-    raise NotImplementedError
+    """Scrape image urls and captions from Flickr Images"""
+    query_params = urllib.parse.urlencode(
+        {
+            "safe": "off",
+            "tbm": "isch",
+            "source": "hp",
+            "q": query,
+            "gs_l": "img",
+        }
+    )
+    driver.get("https://www.flickr.com/search/?" + query_params)
+    query_datetime = datetime.utcnow()
+    # img_data = {}
+
+    prevLength = 0
+    i = 0
+    result_index = 0
+    waited = False
+    while True:
+        scroll_to_end(driver)
+
+        items = driver.find_elements_by_xpath(
+            "/html/body/div[1]/div/main/div[2]/div/div[2]/div"
+        )
+
+        if len(items) == prevLength:
+            if not waited:
+                driver.implicitly_wait(25)
+                waited = True
+            else:
+                # print("Loaded all images")
+                logger.debug("Loaded all images")
+                break
+        prevLength = len(items)
+
+        for item in items[result_index : len(items) - 1]:
+            style = item.get_attribute("style")
+            url = re.search(r'url\("//(.+?)"\);', style)
+            if url:
+                url = "http://" + url.group(1)
+                caption = item.find_element_by_class_name(
+                        "interaction-bar"
+                ).get_attribute("title")
+                caption = caption[: re.search(r"\bby\b", caption).start()].strip()
+
+                yield {
+                    # query=query,
+                    # result_index=i,
+                    # url=url,
+                    # caption=caption,
+                    # datetime_utc=datetime.utcnow(),
+                    # engine="flickr",
+                    # public_ip=self.public_ip,
+                    "query": query,
+                    "datetime_utc": query_datetime,
+                    "result_index": result_index,
+                    "caption": caption,
+                    "url": url,
+                }
+            result_index += 1
+        # start = len(items)
+    # return img_data
+    
+    # raise NotImplementedError
 
 
 def scroll_to_end(driver):
