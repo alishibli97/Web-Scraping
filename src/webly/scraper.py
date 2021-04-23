@@ -262,9 +262,7 @@ def get_yahoo_images(driver, query):
 
     # Accept cookie
     with suppress(Exception):
-        self.chrome.find_element_by_xpath(
-            '//*[@id="consent-page"]/div/div/div/div[2]/div[2]/form/button'
-        ).click()
+        self.chrome.find_element_by_xpath('//*[@id="consent-page"]/div/div/div/div[2]/div[2]/form/button').click()
 
     prevLength = 0
     result_index = 0
@@ -275,15 +273,12 @@ def get_yahoo_images(driver, query):
         items = html_list.find_elements_by_tag_name("li")
 
         if len(items) == prevLength:
-            # print("Loaded all images")
             logger.debug("Loaded all images")
             break
         
         logger.trace(f"New images after scrolling: {len(items)}")
         
         prevLength = len(items)
-
-        # print(f"There are {len(items)} images")
 
         for content in items[result_index : len(items) - 1]:
             try:
@@ -307,8 +302,6 @@ def get_yahoo_images(driver, query):
                     "url": src,
                 }
             result_index += 1
-            # result_index = len(items)
-
 
 def get_flickr_images(driver, query):
     """Scrape image urls and captions from Flickr Images"""
@@ -323,7 +316,6 @@ def get_flickr_images(driver, query):
     )
     driver.get("https://www.flickr.com/search/?" + query_params)
     query_datetime = datetime.utcnow()
-    # img_data = {}
 
     prevLength = 0
     i = 0
@@ -332,16 +324,13 @@ def get_flickr_images(driver, query):
     while True:
         scroll_to_end(driver)
 
-        items = driver.find_elements_by_xpath(
-            "/html/body/div[1]/div/main/div[2]/div/div[2]/div"
-        )
+        items = driver.find_elements_by_xpath("/html/body/div[1]/div/main/div[2]/div/div[2]/div")
 
         if len(items) == prevLength:
             if not waited:
                 driver.implicitly_wait(25)
                 waited = True
             else:
-                # print("Loaded all images")
                 logger.debug("Loaded all images")
                 break
         prevLength = len(items)
@@ -357,13 +346,6 @@ def get_flickr_images(driver, query):
                 caption = caption[: re.search(r"\bby\b", caption).start()].strip()
 
                 yield {
-                    # query=query,
-                    # result_index=i,
-                    # url=url,
-                    # caption=caption,
-                    # datetime_utc=datetime.utcnow(),
-                    # engine="flickr",
-                    # public_ip=self.public_ip,
                     "query": query,
                     "datetime_utc": query_datetime,
                     "result_index": result_index,
@@ -371,10 +353,6 @@ def get_flickr_images(driver, query):
                     "url": url,
                 }
             result_index += 1
-        # start = len(items)
-    # return img_data
-    
-    # raise NotImplementedError
 
 
 def scroll_to_end(driver):
