@@ -262,7 +262,9 @@ def get_yahoo_images(driver, query):
 
     # Accept cookie
     with suppress(Exception):
-        self.chrome.find_element_by_xpath('//*[@id="consent-page"]/div/div/div/div[2]/div[2]/form/button').click()
+        self.chrome.find_element_by_xpath(
+            '//*[@id="consent-page"]/div/div/div/div[2]/div[2]/form/button'
+        ).click()
 
     prevLength = 0
     result_index = 0
@@ -324,7 +326,9 @@ def get_flickr_images(driver, query):
     while True:
         scroll_to_end(driver)
 
-        items = driver.find_elements_by_xpath("/html/body/div[1]/div/main/div[2]/div/div[2]/div")
+        items = driver.find_elements_by_xpath(
+            "/html/body/div[1]/div/main/div[2]/div/div[2]/div"
+        )
 
         if len(items) == prevLength:
             if not waited:
